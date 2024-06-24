@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 class SignatureNet(nn.Module):
     def __init__(self):
@@ -82,7 +83,8 @@ class SignatureNet(nn.Module):
             net.train()
 
             for i, (input1, input2, forgery_label1) in enumerate(train_loader):
-                forgery_label1 = forgery_label1.float().unsqueeze(1)
+                input1, input2 = input1.cuda(), input2.cuda()
+                forgery_label1 = forgery_label1.cuda().float().unsqueeze(1)
                 
                 # Zero the parameter gradients
                 optimizer.zero_grad()
@@ -96,9 +98,9 @@ class SignatureNet(nn.Module):
                 
                 # Total loss
                 total_loss = loss_sim + loss_forgery
-                sim_loss_history.append(loss_sim)
-                forgery_loss_history.append(loss_forgery)
-                total_loss_history.append(total_loss)
+                sim_loss_history.append(loss_sim.item())
+                forgery_loss_history.append(loss_forgery.item())
+                total_loss_history.append(total_loss.item())
                 
                 # Backward pass and optimize
                 total_loss.backward()
@@ -106,13 +108,13 @@ class SignatureNet(nn.Module):
                 
                 # Every 10 batches, print out the loss and evaluate on validation set
                 if i % 10 == 0:
-                    print(f"Epoch number {epoch}\n Current loss {total_loss}\n")
+                    print(f"Epoch number {epoch}\n Current loss {total_loss.item()}\n")
                     iteration_number += 10
 
                     counter.append(iteration_number)
 
                     val_loss = self.evaluate(val_loader, net)
-                    val_loss_history.append(val_loss.item())
+                    val_loss_history.append(val_loss)
                     print(f"Validation loss after {iteration_number} iterations: {val_loss}\n")
 
         self.show_plot(counter, total_loss_history, sim_loss_history, forgery_loss_history, val_loss_history)
@@ -122,15 +124,25 @@ class SignatureNet(nn.Module):
         val_loss = 0.0
         with torch.no_grad():
             for img0, img1, forgery_label in validation_loader:
+                img0, img1 = img0.cuda(), img1.cuda()
+                forgery_label = forgery_label.cuda().float().unsqueeze(1)
                 output1, output2, forgery = net(img0, img1)
 
-                loss_sim = self.similarity_loss(output1, output2)
-                loss_forgery = self.forgery_loss(forgery, forgery_label)
+                loss_sim = self.similarity_loss(output1, output2).mean()
+                loss_forgery = self.forgery_loss(forgery, forgery_label).mean()
                 
                 total_loss = loss_sim + loss_forgery
-                val_loss += total_loss
+                val_loss += total_loss.item()
         return val_loss / len(validation_loader)
 
+
     def show_plot(self, counter, total_loss_history, sim_loss_history, forgery_loss_history, val_loss_history):
-        # Implement plotting logic here if needed
-        pass
+        plt.figure(figsize=(10,5))
+        plt.plot(counter, total_loss_history, label='Total Loss')
+        plt.plot(counter, sim_loss_history, label='Similarity Loss')
+        plt.plot(counter, forgery_loss_history, label='Forgery Loss')
+        plt.plot(counter, val_loss_history, label='Validation Loss')
+        plt.xlabel('Iterations')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.show()
