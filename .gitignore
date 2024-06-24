@@ -1,3 +1,4 @@
 data/*
 Environment/*
 /environment
+/__pycache__

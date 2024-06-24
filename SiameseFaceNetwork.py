@@ -1,0 +1,133 @@
+import torch
+from torch.utils.data import DataLoader
+import torch.nn as nn
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
+
+#create the Siamese Neural Network
+class SiameseFaceNetwork(nn.Module):
+
+    def __init__(self):
+        super(SiameseFaceNetwork, self).__init__()
+
+        # Setting up the Sequential of CNN Layers
+        self.cnn1 = nn.Sequential(
+            nn.Conv2d(1, 96, kernel_size=11,stride=4),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(3, stride=2),
+            
+            nn.Conv2d(96, 256, kernel_size=5, stride=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, stride=2),
+
+            nn.Conv2d(256, 384, kernel_size=3,stride=1),
+            nn.ReLU(inplace=True)
+        )
+
+        # Setting up the Fully Connected Layers
+        self.fc1 = nn.Sequential(
+            nn.Linear(384, 1024),
+            nn.ReLU(inplace=True),
+            
+            nn.Linear(1024, 256),
+            nn.ReLU(inplace=True),
+            
+            nn.Linear(256,2)
+        )
+        
+    def forward_once(self, x):
+        # This function will be called for both images
+        # Its output is used to determine the similiarity
+        output = self.cnn1(x)
+        output = output.view(output.size()[0], -1)
+        output = self.fc1(output)
+        return output
+
+    def forward(self, input1, input2):
+        # In this function we pass in both images and obtain both vectors
+        # which are returned
+        output1 = self.forward_once(input1)
+        output2 = self.forward_once(input2)
+
+        return output1, output2
+
+    def evaluate(self, validation_loader, net, criterion):
+        net.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for img0, img1, label in validation_loader:
+                #img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
+                output1, output2 = net(img0, img1)
+                loss_contrastive = criterion(output1, output2, label)
+                val_loss += loss_contrastive.item()
+        return val_loss / len(validation_loader)
+
+    def train_network(self, train_loader, val_loader, net, optimizer, criterion, epochs):
+        counter = []
+        loss_history = [] 
+        val_loss_history = []
+        iteration_number = 0
+
+        # Iterate through the epochs
+        for epoch in range(epochs):
+
+            net.train()
+            # Iterate over batches
+            for i, (img0, img1, label) in enumerate(train_loader, 0):
+
+                # Send the images and labels to CUDA
+                #img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
+
+                # Zero the gradients
+                optimizer.zero_grad()
+
+                # Pass in the two images into the network and obtain two outputs
+                output1, output2 = net(img0, img1)
+
+                # Pass the outputs of the networks and label into the loss function
+                loss_contrastive = criterion(output1, output2, label)
+
+                # Calculate the backpropagation
+                loss_contrastive.backward()
+
+                # Optimize
+                optimizer.step()
+
+                # Every 10 batches, print out the loss and evaluate on validation set
+                if i % 10 == 0:
+                    print(f"Epoch number {epoch}\n Current loss {loss_contrastive.item()}\n")
+                    iteration_number += 10
+
+                    counter.append(iteration_number)
+                    loss_history.append(loss_contrastive.item())
+
+                    val_loss = self.evaluate(val_loader, net, criterion)
+                    val_loss_history.append(val_loss)
+                    print(f"Validation loss after {iteration_number} iterations: {val_loss}\n")
+
+        self.show_plot(counter, loss_history, val_loss_history)
+
+
+    # Function to evaluate the model on the test dataset
+    def evaluate_test(self, test_loader, net, criterion):
+        net.eval()
+        test_loss = 0.0
+        with torch.no_grad():
+            for img0, img1, label in test_loader:
+                #img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
+                output1, output2 = net(img0, img1)
+                loss_contrastive = criterion(output1, output2, label)
+                test_loss += loss_contrastive.item()
+        test_loss = test_loss / len(test_loader)
+        print(f"Test loss: {test_loss}")
+        return test_loss
+
+    # Function to plot the loss history
+    def show_plot(self, counter, loss_history, val_loss_history):
+        plt.figure()
+        plt.plot(counter, loss_history, label='Training Loss')
+        plt.plot(counter, val_loss_history, label='Validation Loss')
+        plt.xlabel('Iterations')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.show()
