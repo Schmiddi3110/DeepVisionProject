@@ -107,21 +107,6 @@ class SiameseFaceNetwork(nn.Module):
 
         self.show_plot(counter, loss_history, val_loss_history)
 
-
-    # Function to evaluate the model on the test dataset
-    def evaluate_test(self, test_loader, net, criterion):
-        net.eval()
-        test_loss = 0.0
-        with torch.no_grad():
-            for img0, img1, label in test_loader:
-                img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
-                output1, output2 = net(img0, img1)
-                loss_contrastive = criterion(output1, output2, label)
-                test_loss += loss_contrastive.item()
-        test_loss = test_loss / len(test_loader)
-        print(f"Test loss: {test_loss}")
-        return test_loss
-
     # Function to plot the loss history
     def show_plot(self, counter, loss_history, val_loss_history):
         plt.figure()
