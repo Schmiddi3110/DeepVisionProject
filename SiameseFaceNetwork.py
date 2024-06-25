@@ -12,27 +12,37 @@ class SiameseFaceNetwork(nn.Module):
 
         # Setting up the Sequential of CNN Layers
         self.cnn1 = nn.Sequential(
-            nn.Conv2d(1, 96, kernel_size=11,stride=4),
+            nn.Conv2d(1, 96, kernel_size=11, stride=4),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2),
+            nn.BatchNorm2d(96),
+            nn.Dropout(0.25),
             
             nn.Conv2d(96, 256, kernel_size=5, stride=1),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2, stride=2),
+            nn.BatchNorm2d(256),
+            nn.Dropout(0.25),
 
-            nn.Conv2d(256, 384, kernel_size=3,stride=1),
-            nn.ReLU(inplace=True)
+            nn.Conv2d(256, 384, kernel_size=3, stride=1),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(384),
+            nn.Dropout(0.25)
         )
 
         # Setting up the Fully Connected Layers
         self.fc1 = nn.Sequential(
             nn.Linear(384, 1024),
             nn.ReLU(inplace=True),
+            nn.BatchNorm1d(1024),
+            nn.Dropout(0.5),
             
             nn.Linear(1024, 256),
             nn.ReLU(inplace=True),
+            nn.BatchNorm1d(256),
+            nn.Dropout(0.5),
             
-            nn.Linear(256,2)
+            nn.Linear(256, 2)
         )
         
     def forward_once(self, x):
@@ -62,11 +72,15 @@ class SiameseFaceNetwork(nn.Module):
                 val_loss += loss_contrastive.item()
         return val_loss / len(validation_loader)
 
-    def train_network(self, train_loader, val_loader, net, optimizer, criterion, epochs):
+    def train_network(self, train_loader, val_loader, net, optimizer, criterion, epochs, patience=5):
         counter = []
         loss_history = [] 
         val_loss_history = []
         iteration_number = 0
+
+        # Early stopping variables
+        best_val_loss = float('inf')
+        epochs_without_improvement = 0
 
         # Iterate through the epochs
         for epoch in range(epochs):
@@ -104,6 +118,18 @@ class SiameseFaceNetwork(nn.Module):
                     val_loss = self.evaluate(val_loader, net, criterion)
                     val_loss_history.append(val_loss)
                     print(f"Validation loss after {iteration_number} iterations: {val_loss}\n")
+                    
+                    # Check for early stopping
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        epochs_without_improvement = 0
+                    else:
+                        epochs_without_improvement += 1
+
+                    if epochs_without_improvement >= patience:
+                        print(f"Early stopping at epoch {epoch} after {epochs_without_improvement} epochs without improvement.")
+                        self.show_plot(counter, loss_history, val_loss_history)
+                        return
 
         self.show_plot(counter, loss_history, val_loss_history)
 
