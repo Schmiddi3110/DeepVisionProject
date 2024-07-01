@@ -5,12 +5,9 @@ import torch.nn.functional as F
 import torchvision.models as models
 import matplotlib.pyplot as plt
 
-#create the Siamese Neural Network
 class SiameseSignatureNetwork(nn.Module):
-
     def __init__(self):
         super(SiameseSignatureNetwork, self).__init__()
-
 
         # Using a pre-trained ResNet model
         self.resnet = models.resnet18(pretrained=True)

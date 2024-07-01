@@ -5,9 +5,9 @@ import torch.nn.functional as F
 import torchvision.models as models
 import matplotlib.pyplot as plt
 
-class SiameseFaceNetwork(nn.Module):
+class SiameseNetwork(nn.Module):
     def __init__(self):
-        super(SiameseFaceNetwork, self).__init__()
+        super(SiameseNetwork, self).__init__()
 
         # Using a pre-trained ResNet model
         self.resnet = models.resnet18(pretrained=True)
@@ -56,7 +56,7 @@ class SiameseFaceNetwork(nn.Module):
         val_loss = 0.0
         with torch.no_grad():
             for img0, img1, label in validation_loader:
-                img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
+                #img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
                 output1, output2 = net(img0, img1)
                 loss_contrastive = criterion(output1, output2, label)
                 val_loss += loss_contrastive.item()
@@ -80,7 +80,7 @@ class SiameseFaceNetwork(nn.Module):
             for i, (img0, img1, label) in enumerate(train_loader, 0):
 
                 # Send the images and labels to CUDA
-                img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
+                #img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
 
                 # Zero the gradients
                 optimizer.zero_grad()
