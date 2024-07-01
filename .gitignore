@@ -3,3 +3,4 @@ Environment/*
 /environment
 /__pycache__
 *.pt
+/checkpoints
