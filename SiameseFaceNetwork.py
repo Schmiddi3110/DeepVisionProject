@@ -2,37 +2,28 @@ import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.models as models
 import matplotlib.pyplot as plt
 
-#create the Siamese Neural Network
 class SiameseFaceNetwork(nn.Module):
-
     def __init__(self):
         super(SiameseFaceNetwork, self).__init__()
 
-        # Setting up the Sequential of CNN Layers
-        self.cnn1 = nn.Sequential(
-            nn.Conv2d(1, 96, kernel_size=11, stride=4),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(3, stride=2),
-            nn.BatchNorm2d(96),
-            nn.Dropout(0.25),
-            
-            nn.Conv2d(96, 256, kernel_size=5, stride=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, stride=2),
-            nn.BatchNorm2d(256),
-            nn.Dropout(0.25),
-
-            nn.Conv2d(256, 384, kernel_size=3, stride=1),
-            nn.ReLU(inplace=True),
-            nn.BatchNorm2d(384),
-            nn.Dropout(0.25)
-        )
-
-        # Setting up the Fully Connected Layers
+        # Using a pre-trained ResNet model
+        self.resnet = models.resnet18(pretrained=True)
+        
+        # Modify the first convolutional layer to accept 1-channel input
+        self.resnet.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        
+        # Get the number of input features for the last fully connected layer
+        num_ftrs = self.resnet.fc.in_features
+        
+        # Remove the final fully connected layer
+        self.resnet.fc = nn.Identity()
+        
+        # Add custom fully connected layers
         self.fc1 = nn.Sequential(
-            nn.Linear(384, 1024),
+            nn.Linear(num_ftrs, 1024),
             nn.ReLU(inplace=True),
             nn.BatchNorm1d(1024),
             nn.Dropout(0.5),
@@ -47,9 +38,8 @@ class SiameseFaceNetwork(nn.Module):
         
     def forward_once(self, x):
         # This function will be called for both images
-        # Its output is used to determine the similiarity
-        output = self.cnn1(x)
-        output = output.view(output.size()[0], -1)
+        # Its output is used to determine the similarity
+        output = self.resnet(x)
         output = self.fc1(output)
         return output
 
