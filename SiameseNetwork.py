@@ -4,9 +4,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 import matplotlib.pyplot as plt
+from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 class SiameseNetwork(nn.Module):
+    """
+    Siamese Network using a pre-trained ResNet model for feature extraction and custom fully connected layers.
+
+    Methods:
+        forward_once(x): Passes an input through the network once to get the embedding.
+        forward(input1, input2): Passes two inputs through the network to get their embeddings.
+        evaluate(validation_loader, net, criterion): Evaluates the network on the validation set.
+        train_network(train_loader, val_loader, net, optimizer, criterion, epochs, patience=5): Trains the network with early stopping.
+        show_plot(counter, loss_history, val_loss_history): Plots training and validation loss histories.
+    """
+
     def __init__(self):
+        """
+        Initializes the SiameseNetwork with a pre-trained ResNet18 model and custom fully connected layers.
+        """
         super(SiameseNetwork, self).__init__()
 
         # Using a pre-trained ResNet model
@@ -37,21 +53,47 @@ class SiameseNetwork(nn.Module):
         )
         
     def forward_once(self, x):
-        # This function will be called for both images
-        # Its output is used to determine the similarity
+        """
+        Passes an input through the network once to get the embedding.
+
+        Args:
+            x (torch.Tensor): Input tensor.
+
+        Returns:
+            torch.Tensor: Output embedding.
+        """
         output = self.resnet(x)
         output = self.fc1(output)
         return output
 
     def forward(self, input1, input2):
-        # In this function we pass in both images and obtain both vectors
-        # which are returned
+        """
+        Passes two inputs through the network to get their embeddings.
+
+        Args:
+            input1 (torch.Tensor): First input tensor.
+            input2 (torch.Tensor): Second input tensor.
+
+        Returns:
+            tuple: A tuple containing the embeddings of the two inputs.
+        """
         output1 = self.forward_once(input1)
         output2 = self.forward_once(input2)
 
         return output1, output2
 
     def evaluate(self, validation_loader, net, criterion):
+        """
+        Evaluates the network on the validation set.
+
+        Args:
+            validation_loader (DataLoader): DataLoader for the validation set.
+            net (nn.Module): The Siamese network.
+            criterion (nn.Module): Loss function.
+
+        Returns:
+            float: The average validation loss.
+        """
         net.eval()
         val_loss = 0.0
         with torch.no_grad():
@@ -62,7 +104,21 @@ class SiameseNetwork(nn.Module):
                 val_loss += loss_contrastive.item()
         return val_loss / len(validation_loader)
 
-    def train_network(self, train_loader, val_loader, net, optimizer, criterion, epochs, patience=5):
+    def train_network(self, train_loader, val_loader, net, optimizer, criterion, epochs, log_dir='./logs', patience=5):
+        """
+        Trains the network with early stopping.
+
+        Args:
+            train_loader (DataLoader): DataLoader for the training set.
+            val_loader (DataLoader): DataLoader for the validation set.
+            net (nn.Module): The Siamese network.
+            optimizer (torch.optim.Optimizer): Optimizer for training.
+            criterion (nn.Module): Loss function.
+            epochs (int): Number of epochs to train for.
+            log_dir (str, optional): Directory to save TensorBoard logs. Defaults to './logs'.
+            patience (int, optional): Number of epochs to wait for improvement before stopping. Defaults to 5.
+        """
+        writer = SummaryWriter(log_dir=log_dir)
         counter = []
         loss_history = [] 
         val_loss_history = []
@@ -73,11 +129,11 @@ class SiameseNetwork(nn.Module):
         epochs_without_improvement = 0
 
         # Iterate through the epochs
-        for epoch in range(epochs):
-
+        for epoch in tqdm(range(epochs), desc=f"Training the model for {epochs} epochs"):
             net.train()
-            # Iterate over batches
-            for i, (img0, img1, label) in enumerate(train_loader, 0):
+            running_loss = 0.0
+            # Iterate over batches with tqdm progress bar
+            for i, (img0, img1, label) in enumerate(train_loader):
 
                 # Send the images and labels to CUDA
                 img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
@@ -97,17 +153,20 @@ class SiameseNetwork(nn.Module):
                 # Optimize
                 optimizer.step()
 
+                running_loss += loss_contrastive.item()
+
                 # Every 10 batches, print out the loss and evaluate on validation set
                 if i % 10 == 0:
-                    print(f"Epoch number {epoch}\n Current loss {loss_contrastive.item()}\n")
                     iteration_number += 10
-
                     counter.append(iteration_number)
                     loss_history.append(loss_contrastive.item())
+                    writer.add_scalar('Training Loss', loss_contrastive.item(), iteration_number)
 
                     val_loss = self.evaluate(val_loader, net, criterion)
                     val_loss_history.append(val_loss)
-                    print(f"Validation loss after {iteration_number} iterations: {val_loss}\n")
+                    writer.add_scalar('Validation Loss', val_loss, iteration_number)
+                    
+                    #print(f"Epoch number {epoch}\n Current loss {loss_contrastive.item()}\n Validation loss: {val_loss}\n")
                     
                     # Check for early stopping
                     if val_loss < best_val_loss:
@@ -117,14 +176,28 @@ class SiameseNetwork(nn.Module):
                         epochs_without_improvement += 1
 
                     if epochs_without_improvement >= patience:
-                        print(f"Early stopping at epoch {epoch} after {epochs_without_improvement} epochs without improvement.")
+                        #print(f"Early stopping at epoch {epoch} after {epochs_without_improvement} epochs without improvement.")
                         self.show_plot(counter, loss_history, val_loss_history)
+                        writer.close()
                         return
 
-        self.show_plot(counter, loss_history, val_loss_history)
+            # Log average loss for the epoch
+            avg_loss = running_loss / len(train_loader)
+            writer.add_scalar('Average Training Loss', avg_loss, epoch)
+            #print(f"Average Training Loss after epoch {epoch}: {avg_loss}")
 
-    # Function to plot the loss history
+        self.show_plot(counter, loss_history, val_loss_history)
+        writer.close()
+
     def show_plot(self, counter, loss_history, val_loss_history):
+        """
+        Plots training and validation loss histories.
+
+        Args:
+            counter (list): List of iteration numbers.
+            loss_history (list): List of training loss values.
+            val_loss_history (list): List of validation loss values.
+        """
         plt.figure()
         plt.plot(counter, loss_history, label='Training Loss')
         plt.plot(counter, val_loss_history, label='Validation Loss')
