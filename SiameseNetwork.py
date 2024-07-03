@@ -26,7 +26,7 @@ class SiameseNetwork(nn.Module):
         super(SiameseNetwork, self).__init__()
 
         # Using a pre-trained ResNet model
-        self.resnet = models.resnet18(pretrained=True)
+        self.resnet = models.resnet18(weights = models.ResNet18_Weights.IMAGENET1K_V1)
         
         # Modify the first convolutional layer to accept 1-channel input
         self.resnet.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
@@ -82,7 +82,7 @@ class SiameseNetwork(nn.Module):
 
         return output1, output2
 
-    def evaluate(self, validation_loader, net, criterion):
+    def evaluate(self, validation_loader, net, criterion, device):
         """
         Evaluates the network on the validation set.
 
@@ -98,13 +98,13 @@ class SiameseNetwork(nn.Module):
         val_loss = 0.0
         with torch.no_grad():
             for img0, img1, label in validation_loader:
-                img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
+                img0, img1, label = img0.to(device), img1.to(device), label.to(device)
                 output1, output2 = net(img0, img1)
                 loss_contrastive = criterion(output1, output2, label)
                 val_loss += loss_contrastive.item()
         return val_loss / len(validation_loader)
 
-    def train_network(self, train_loader, val_loader, net, optimizer, criterion, epochs, log_dir='./logs', patience=5):
+    def train_network(self, train_loader, val_loader, net, optimizer, criterion, epochs,device, log_dir='./logs', patience=5):
         """
         Trains the network with early stopping.
 
@@ -135,8 +135,8 @@ class SiameseNetwork(nn.Module):
             # Iterate over batches with tqdm progress bar
             for i, (img0, img1, label) in enumerate(train_loader):
 
-                # Send the images and labels to CUDA
-                img0, img1, label = img0.cuda(), img1.cuda(), label.cuda()
+                # Send the images and labels to CUDA                
+                img0, img1, label = img0.to(device), img1.to(device), label.to(device)
 
                 # Zero the gradients
                 optimizer.zero_grad()
@@ -162,7 +162,7 @@ class SiameseNetwork(nn.Module):
                     loss_history.append(loss_contrastive.item())
                     writer.add_scalar('Training Loss', loss_contrastive.item(), iteration_number)
 
-                    val_loss = self.evaluate(val_loader, net, criterion)
+                    val_loss = self.evaluate(val_loader, net, criterion, device)
                     val_loss_history.append(val_loss)
                     writer.add_scalar('Validation Loss', val_loss, iteration_number)
                     
